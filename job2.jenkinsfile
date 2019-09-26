@@ -1,0 +1,42 @@
+pipeline {
+    agent {label 'VM_B'}
+        stages {
+            stage('Copying Artifact from Fin_1') {
+                steps {
+                    copyArtifacts filter: 'target/mywebapp.war', fingerprintArtifacts: true, projectName: 'Fin_1'
+                }
+            }
+            
+            stage('Packing to archive') {
+                steps {
+                    sh 'tar -C $WORKSPACE/target -cvf mywebapp.tar.gz mywebapp.war'
+                }
+            }
+            
+            stage('Copying archive to remote machine') {
+                steps {
+                    sh 'scp mywebapp.tar.gz oksana_samorukova@10.19.10.140:/var/fin/deploy'
+                }
+            }
+            
+            stage('Launching deploy script on remote machine') {
+                steps {
+                    sh "ssh oksana_samorukova@10.19.10.140 '/var/fin/deploy/deploy.sh'"
+                }
+            }
+        }
+    post {
+        unstable {
+            emailext body: '$DEFAULT_CONTENT', subject: '$DEFAULT_SUBJECT', to: 'amb-dem@mail.ru'
+        }
+        notBuilt {
+            emailext body: '$DEFAULT_CONTENT', subject: '$DEFAULT_SUBJECT', to: 'amb-dem@mail.ru'
+        }
+        aborted {
+            emailext body: '$DEFAULT_CONTENT', subject: '$DEFAULT_SUBJECT', to: 'amb-dem@mail.ru'
+        }
+        failure {
+            emailext body: '$DEFAULT_CONTENT', subject: '$DEFAULT_SUBJECT', to: 'amb-dem@mail.ru'
+        }
+    }
+}
