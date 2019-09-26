@@ -1,0 +1,67 @@
+pipeline {
+    agent any 
+    stages {
+        stage('Preparation') {
+            steps {
+                git credentialsId: 'git', url: 'https://github.com/soigh/webappwar.git'
+            }
+        }
+        stage('Building and Testing') {
+            steps {
+                sh '/usr/local/src/apache-maven-3.6.1/bin/mvn clean package'
+            }
+        }
+        stage('Archiving artifacts, Publishing test results') {
+            steps {
+                archiveArtifacts 'target/*.war'
+                junit 'target/surefire-reports/*.xml'
+            }
+        }
+        stage('Uploading artifact to Nexus') {
+            steps {
+                nexusPublisher nexusInstanceId: 'NXRMOSS3.18.1-01', nexusRepositoryId: 'maven-releases', packages: [[$class: 'MavenPackage', mavenAssetList: [[classifier: '', extension: '', filePath: 'target/mywebapp.war']], mavenCoordinate: [artifactId: 'WebApp', groupId: 'denofprogramming', packaging: 'war', version: '$BUILD_NUMBER']]]
+            }
+        }
+        stage('Sonarqube'){
+            environment {
+                scannerHome = tool 'SonarQube'
+            }
+            steps {
+                withSonarQubeEnv('Sonar 6.0 (LTS)') {
+                    sh '${scannerHome}/bin/sonar-scanner ' +
+                    '-Dsonar.projectKey=Fin_1_DP ' +
+                    '-Dsonar.projectName=Fin_1_DP ' +
+                    '-Dsonar.projectVersion=1.0 ' +
+                    '-Dsonar.sources=$WORKSPACE '
+                }    
+            }
+        }
+        stage('Quality Gate') {
+            steps {
+                script {
+                    sleep(10)
+                    timeout (time:10, unit:'SECONDS') {
+                        def qg = waitForQualityGate()
+                        if (qg.status != 'OK') {
+                            error "Pipeline aborted due to quality gate failure: ${qg.status}"
+                        }
+                    }
+                }
+            }
+        }
+    }
+    post {
+        unstable {
+            emailext body: '$DEFAULT_CONTENT', subject: '$DEFAULT_SUBJECT', to: 'amb-dem@mail.ru'
+        }
+        notBuilt {
+            emailext body: '$DEFAULT_CONTENT', subject: '$DEFAULT_SUBJECT', to: 'amb-dem@mail.ru'
+        }
+        aborted {
+            emailext body: '$DEFAULT_CONTENT', subject: '$DEFAULT_SUBJECT', to: 'amb-dem@mail.ru'
+        }
+        failure {
+            emailext body: '$DEFAULT_CONTENT', subject: '$DEFAULT_SUBJECT', to: 'amb-dem@mail.ru'
+        }
+    }
+}
